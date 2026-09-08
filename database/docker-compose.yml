@@ -1,0 +1,55 @@
+name: agents-database
+
+services:
+  postgres:
+    build: .
+    image: agents-database:local
+    container_name: agents-db
+    restart: unless-stopped
+    # wrapper entrypoint: start server, then restore the latest backup
+    entrypoint: ["/usr/local/bin/docker-entrypoint-wrapper.sh"]
+    command: ["postgres"]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-allagents}
+      POSTGRES_USER: ${POSTGRES_USER:-agents}
+      # Local dev only — override via POSTGRES_PASSWORD in a .env file.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agents}
+      # true (default): restore the latest backup on every container start
+      RESTORE_ON_START: ${RESTORE_ON_START:-true}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # postgres:17 stores data here; the volume survives `down` (use `down -v` to wipe)
+      - pgdata:/var/lib/postgresql/data
+      # hourly dumps; shared with the backup sidecar
+      - pgbackups:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-agents} -d $${POSTGRES_DB:-allagents}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  backup:
+    build: .
+    image: agents-database:local
+    container_name: agents-db-backup
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/usr/local/bin/backup.sh"]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-allagents}
+      POSTGRES_USER: ${POSTGRES_USER:-agents}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agents}
+      # seconds between dumps (3600 = every hour)
+      BACKUP_INTERVAL: ${BACKUP_INTERVAL:-3600}
+      # newest dumps to keep (24 = one day of hourly dumps)
+      BACKUP_KEEP: ${BACKUP_KEEP:-24}
+    volumes:
+      - pgbackups:/backups
+
+volumes:
+  pgdata:
+  pgbackups:
