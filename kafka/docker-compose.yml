@@ -1,0 +1,44 @@
+name: agents-kafka
+
+services:
+  kafka:
+    build: .
+    image: agents-kafka:local
+    container_name: agents-kafka
+    restart: unless-stopped
+    # wrapper entrypoint: start the broker, create the platform topics, keep running
+    entrypoint: ["/usr/local/bin/docker-entrypoint-wrapper.sh"]
+    command: ["/etc/kafka/docker/run"]
+    environment:
+      # single-node KRaft: broker + controller in one process
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://${KAFKA_ADVERTISED_HOST:-localhost}:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # topics are created explicitly by create-topics.sh, never on demand
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      # used by the wrapper + topic init scripts
+      KAFKA_CLIENT_PORT: 9092
+      KAFKA_BOOTSTRAP_SERVERS: 127.0.0.1:9092
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+    volumes:
+      # broker data + KRaft metadata; survives `down` (use `down -v` to wipe)
+      - kafkadata:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 9092"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  kafkadata:

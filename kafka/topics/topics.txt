@@ -1,0 +1,6 @@
+# Platform topic definitions, one per line: <name> <partitions> <retention.ms>
+# Applied on every container start by scripts/create-topics.sh (idempotent).
+# Replication factor comes from KAFKA_REPLICATION_FACTOR (default 1, single node).
+# Keep in sync with the mirror in all-agents/contracts/kafka/topics.txt.
+agent-requests 3 86400000
+agent-events 3 86400000

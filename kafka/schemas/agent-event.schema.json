@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agents.infra.local/kafka/agent-event.schema.json",
+  "title": "AgentEvent",
+  "description": "Agent lifecycle and processing-result event published to the agent-events topic. Record key = correlationId when present, else the agent name. The UI listener (SSE GET /api/events/stream?processingId=...) completes when an event of type REQUEST_COMPLETED, REQUEST_FAILED or REQUEST_BLOCKED carries the watched processingId as correlationId; the UI then refreshes the conversation from chat history.",
+  "type": "object",
+  "required": ["type", "agentName", "timestamp", "correlationId"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "AGENT_STARTED",
+        "AGENT_STOPPED",
+        "REQUEST_COMPLETED",
+        "REQUEST_FAILED",
+        "REQUEST_BLOCKED"
+      ],
+      "description": "REQUEST_COMPLETED/REQUEST_FAILED/REQUEST_BLOCKED are terminal for a processing request; AGENT_STARTED/AGENT_STOPPED are lifecycle events."
+    },
+    "agentName": {
+      "type": "string",
+      "description": "Name of the agent the event is about (master for chat processing)."
+    },
+    "detail": {
+      "type": ["string", "null"],
+      "description": "Human-readable detail (e.g. the refusal reason for REQUEST_BLOCKED, the error for REQUEST_FAILED)."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 instant the event was raised."
+    },
+    "correlationId": {
+      "type": ["string", "null"],
+      "description": "Processing UUID of the originating processing request; null for lifecycle events."
+    }
+  }
+}

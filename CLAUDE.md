@@ -4,9 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-PostgreSQL schema + Docker packaging for the all-agents multi-agent platform (Java Spring Boot app in sibling repo `C:\Work\Projects\AI\all-agents`, currently on embedded H2). Schema design follows the database-skills Postgres references in `C:\Work\Projects\AI\database-skills\skills\postgres\` — consult those before changing schema. There is no build system, linter, or test suite here; the stack itself is the testbed.
+Infra (PostgreSQL + Kafka) as Docker packaging for the all-agents multi-agent
+platform (Java Spring Boot app in sibling repo `C:\Work\Projects\AI\all-agents`).
+Two stacks, each in its own subdirectory with its own compose file:
 
-## Commands
+- `database/` — PostgreSQL 17 with the platform schema, hourly backups and
+  restore-on-start. Schema design follows the database-skills Postgres
+  references in `C:\Work\Projects\AI\database-skills\skills\postgres\` — consult
+  those before changing schema.
+- `kafka/` — single-node KRaft broker for the async processing pipeline:
+  `agent-requests` / `agent-events` topics, JSON payload schemas. **The contracts
+  (schemas + topic definitions) are kept in both repos** — the mirror lives in
+  `all-agents/contracts/kafka/`; change both copies together.
+
+There is no build system, linter, or test suite here; the stacks themselves are
+the testbed.
+
+## Commands (database stack, run from `database/`)
 
 ```bash
 docker compose up -d --build   # start both services (schema applies on first init of an empty volume)
@@ -17,6 +31,20 @@ docker exec -i agents-db psql -U agents -d allagents -c '<sql>'   # -i required 
 docker compose down            # graceful stop (backup sidecar takes a final dump first)
 docker compose down -v         # wipes BOTH volumes: data AND backups — say so before running it
 ```
+
+## Commands (kafka stack, run from `kafka/`)
+
+```bash
+docker compose up -d --build   # build + start the broker; topics created on first start
+docker compose ps              # wait for agents-kafka to be (healthy)
+docker compose logs agents-kafka
+docker exec agents-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+docker compose down / down -v  # down -v wipes the broker volume (topics + messages)
+```
+
+Broker listens on `localhost:9092` (env knobs: `KAFKA_PORT`, `KAFKA_ADVERTISED_HOST`).
+The wrapper entrypoint starts the broker, waits for a real API handshake, creates
+the topics from `topics/topics.txt` (idempotent), then keeps running as the broker.
 
 Git Bash on Windows mangles container-internal absolute paths (`/backups` → `C:/Program Files/Git/backups`); prefix such commands with `MSYS_NO_PATHCONV=1`.
 
@@ -56,3 +84,5 @@ docker compose down -v   # always clean up the test run
 
 - Alpine = busybox `ash`: use `: "${VAR:=default}"` (`:=`, not `:-`) to assign defaults, and `trap 'fn' INT TERM` + `sleep N & wait $!` so traps interrupt sleep.
 - The wrapper must forward `INT`/`TERM` to the backgrounded server PID or `docker stop` kills postgres uncleanly.
+- **Docker Desktop on Windows host + directory `COPY`**: directory COPYs from the Windows host lose the execute bit (dirs land as `drw-r--r--`) and any `RUN chmod` afterwards fails with "Operation not permitted". Use `COPY --chmod=...` instead — `--chmod=go+rwX` for contract dirs (the apache/kafka image runs as non-root `appuser`, files must be world-readable), `--chmod=755` for scripts. Never remove the `--chmod` flags.
+- Git Bash mangles container-internal absolute paths in `docker exec` commands (`/opt/...` → `C:/Program Files/Git/opt/...`); prefix such commands with `MSYS_NO_PATHCONV=1`.
