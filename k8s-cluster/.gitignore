@@ -1,0 +1,3 @@
+# Generated at runtime by scripts/up.sh: the rendered kind configuration and
+# the remembered kubectl context. Never committed.
+.generated/
