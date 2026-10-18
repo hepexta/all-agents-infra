@@ -96,6 +96,9 @@ mkdir -p "$GENERATED_DIR"
 # filesystem, so the token's protection there is that it lives in a directory
 # ignored by version control inside the user's own profile.
 umask 077
+# Written as a normal text file, so it ends with a newline. Anything consuming
+# it must trim that: a newline inside the credential is not part of the token,
+# and the consumer that reads it into a Kubernetes secret does the trimming.
 printf '%s\n' "$_token" > "$TOKEN_FILE"
 log "wrote the scoped cluster token to $TOKEN_FILE (ignored by version control)"
 
