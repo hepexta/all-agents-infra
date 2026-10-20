@@ -18,10 +18,13 @@ fi
 log "deleting cluster '$CLUSTER_NAME'"
 kind delete cluster --name "$CLUSTER_NAME"
 
-# Deleting a cluster removes its context. If that context was current, put the
-# developer back on whatever they were using before this cluster existed.
+# Deleting a cluster removes its context. If that context was the one in use,
+# put the developer back on what they were using before this cluster existed.
+# Only when the deleted cluster's own context was in use: an empty current
+# context may mean the developer cleared it deliberately, and switching them to
+# something else would be a change they did not ask for.
 _current=$(kubectl config current-context 2>/dev/null || true)
-if [ -z "$_current" ] || [ "$_current" = "$CONTEXT" ]; then
+if [ "$_current" = "$CONTEXT" ]; then
 	if [ -f "$PREVIOUS_CONTEXT_FILE" ]; then
 		_previous=$(cat "$PREVIOUS_CONTEXT_FILE")
 		if [ -n "$_previous" ] && kubectl config use-context "$_previous" >/dev/null 2>&1; then

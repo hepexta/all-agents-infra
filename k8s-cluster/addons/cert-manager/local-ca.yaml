@@ -1,0 +1,39 @@
+# A local certificate authority, so certificates in this cluster are issued
+# through the same mechanism they would be in a managed cluster rather than
+# being self-signed placeholders generated on the fly.
+#
+# Three objects: an issuer that signs the authority itself, the authority, and
+# an issuer that hands out leaf certificates from it. The authority's key lives
+# in a secret in this namespace, which is where a cluster-scoped issuer expects
+# to find it.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: local-selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: local-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: agents-infra-local-ca
+  secretName: local-ca-secret
+  duration: 8760h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: local-selfsigned
+    kind: ClusterIssuer
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: local-ca
+spec:
+  ca:
+    secretName: local-ca-secret

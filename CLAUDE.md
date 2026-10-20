@@ -16,6 +16,15 @@ Two stacks, each in its own subdirectory with its own compose file:
   `agent-requests` / `agent-events` topics, JSON payload schemas. **The contracts
   (schemas + topic definitions) are kept in both repos** — the mirror lives in
   `all-agents/contracts/kafka/`; change both copies together.
+- `k8s-cluster/` — a local Kubernetes cluster for testing Helm charts, shaped
+  like the managed service the platform is eventually deployed to. Not a stack:
+  there is no compose file. It runs kind inside Docker Desktop, installs the
+  services a chart can rely on (storage, usage reporting, ingress under two
+  contracts, certificates, secret delivery), and leaves the two stacks above
+  running alongside it.
+- `database/chart/` — the Helm chart for the database, the Kubernetes
+  counterpart of the `database/` stack. It shares that stack's connection
+  contract and dump naming, owns no schema, and never generates a credential.
 
 There is no build system, linter, or test suite here; the stacks themselves are
 the testbed.
@@ -48,7 +57,27 @@ the topics from `topics/topics.txt` (idempotent), then keeps running as the brok
 
 Git Bash on Windows mangles container-internal absolute paths (`/backups` → `C:/Program Files/Git/backups`); prefix such commands with `MSYS_NO_PATHCONV=1`.
 
+## Commands (local cluster, run from `k8s-cluster/`)
+
+```bash
+sh scripts/up.sh                      # create the cluster for a profile (idempotent)
+sh scripts/vault-seed.sh              # seed this profile's credentials, mint the cluster token
+sh scripts/addons-up.sh               # install or upgrade the platform services
+sh scripts/smoke-test.sh              # the whole acceptance bar, one line per check
+sh scripts/status.sh                  # what exists, which nodes, which version
+sh scripts/down.sh                    # remove the cluster (idempotent)
+sh scripts/up.sh local --render-only  # print the kind configuration a profile produces
+```
+
+Seeding comes before the addons on purpose: the addon that delivers secrets refuses to run without the token the seed step mints.
+
+The chart is installed and driven from its own directory: `sh database/chart/install.sh local`, plus `fetch-dump.sh`, `restore.sh` and `init-schema.sh` beside it.
+
+Nothing here is installed with administrator rights except `choco upgrade kind` and `choco upgrade kubernetes-cli`, which the developer runs from an elevated shell because Chocolatey requires it.
+
 Env knobs (compose, defaults in docker-compose.yml): `POSTGRES_PORT` (5432), `POSTGRES_DB` (allagents), `POSTGRES_USER/PASSWORD` (agents), `BACKUP_INTERVAL` (3600), `BACKUP_KEEP` (24), `RESTORE_ON_START` (true). No `.env` file exists; defaults are inline.
+
+> **Known stale, deliberately left alone.** The `BACKUP_KEEP` name above, and the `pgbackups` named volume described further down, predate the switch to TTL retention (`BACKUP_TTL_HOURS`, `BACKUP_MIN_KEEP`) and the `./bck` bind mount. The working tree is authoritative. This was recorded rather than corrected during the Kubernetes work, because rewriting the container stack's documentation was outside that work's scope.
 
 ## Architecture: the lifecycle that spans five files
 

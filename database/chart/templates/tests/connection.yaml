@@ -1,0 +1,57 @@
+{{- $secretName := include "agents-database.secretName" . -}}
+{{- $keys := .Values.auth.secretKeys -}}
+{{/*
+The chart's own connection test, run with `helm test`. It asserts two things
+that matter: the delivered credential authenticates, and a wrong one does not.
+A test that only checked the happy path would pass against a database with
+authentication disabled.
+*/}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "agents-database.fullname" . }}-test-connection
+  labels:
+    {{- include "agents-database.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    # Kept after a successful run rather than deleted, because the point of the
+    # test is its output, and a pod that vanishes on success takes the evidence
+    # with it. The next run replaces it.
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  restartPolicy: Never
+  containers:
+    - name: psql
+      image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+      command:
+        - sh
+        - -c
+        - |
+          set -eu
+          echo "connecting to $POSTGRES_HOST:$POSTGRES_PORT as $POSTGRES_USER"
+          psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+            -tAc "select 'authenticated as ' || current_user || ' on ' || current_database()"
+          if PGPASSWORD=definitely-not-the-password \
+             psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+             -tAc "select 1" >/dev/null 2>&1; then
+            echo "FAIL: a wrong credential was accepted"
+            exit 1
+          fi
+          echo "a wrong credential was refused, as it must be"
+      env:
+        # The client reads this variable directly, so the delivered password
+        # reaches it without being copied into a template.
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ $secretName }}
+              key: {{ index $keys "password" }}
+      envFrom:
+        - configMapRef:
+            name: {{ include "agents-database.fullname" . }}-connection
+        - secretRef:
+            name: {{ $secretName }}
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi

@@ -1,0 +1,36 @@
+# Local cluster. The only environment file that works without editing, and the
+# one the install script uses when no environment is named.
+
+auth:
+  existingSecret: agents-db-credentials
+
+persistence:
+  # The cluster's default class is a read-write-once local path, which is what
+  # this asks for by leaving the class empty.
+  storageClassName: ""
+  size: 2Gi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+postgresql:
+  maxConnections: 50
+
+# On, because this is a laptop: the database is then reachable on the port the
+# cluster publishes, and only on the loopback address. A managed environment
+# leaves this off and reaches the database from inside the cluster.
+#
+# The gateway and listener names are facts about this cluster, which is why they
+# live in this overlay rather than in the chart's defaults.
+access:
+  gatewayTcp:
+    enabled: true
+    parentRef:
+      name: local
+      namespace: default
+      sectionName: postgres

@@ -1,0 +1,26 @@
+# The classic Ingress contract, under the same class name the managed service's
+# application routing add-on uses, and marked as the cluster default so that an
+# Ingress which names no class is served too.
+#
+# externalTrafficPolicy is relaxed from the chart's default of Local. The host
+# port mapping lands on the control plane node, and with Local a node only
+# forwards to controller pods running on itself, so the published port would
+# refuse connections whenever the controller pod happened to be on a worker.
+# Clustering the policy costs the client source address, which does not matter
+# for a local cluster.
+controller:
+  ingressClass:
+    name: webapprouting.kubernetes.azure.com
+    create: true
+    setAsDefaultIngress: true
+  service:
+    type: NodePort
+    externalTrafficPolicy: Cluster
+    httpPort:
+      enable: true
+      port: 80
+      nodePort: 30080
+    httpsPort:
+      enable: true
+      port: 443
+      nodePort: 30443

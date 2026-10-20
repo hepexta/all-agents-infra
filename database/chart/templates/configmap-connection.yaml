@@ -1,0 +1,22 @@
+{{- if .Values.connection.publish }}
+{{/*
+The non-secret half of the connection settings, named exactly as the
+application reads them. The credential half comes from the secret the chart was
+pointed at, so a consumer combines the two and needs no editing of its own:
+
+  envFrom:
+    - configMapRef:
+        name: {{ include "agents-database.fullname" . }}-connection
+    - secretRef:
+        name: {{ include "agents-database.secretName" . }}
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "agents-database.fullname" . }}-connection
+  labels:
+    {{- include "agents-database.labels" . | nindent 4 }}
+data:
+  POSTGRES_HOST: {{ include "agents-database.fullname" . | quote }}
+  POSTGRES_PORT: {{ .Values.service.port | quote }}
+{{- end }}

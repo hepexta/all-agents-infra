@@ -1,0 +1,27 @@
+# The second half of the storage verification: a brand new pod, mounted on the
+# same claim, which must still see the marker the previous pod wrote. If the
+# volume were ephemeral, this pod would find an empty directory.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: storage-check-reader
+  namespace: default
+  labels:
+    app: storage-check
+spec:
+  restartPolicy: Never
+  containers:
+    - name: reader
+      image: busybox:1.36
+      command: ["sh", "-c", "cat /data/marker && sleep 3600"]
+      volumeMounts:
+        - name: data
+          mountPath: /data
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: storage-check

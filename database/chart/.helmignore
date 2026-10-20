@@ -1,0 +1,8 @@
+# Files that must not be packaged with the chart.
+.git
+.gitignore
+.helmignore
+*.tmp
+*.orig
+*.rej
+.DS_Store

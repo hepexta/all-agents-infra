@@ -1,0 +1,94 @@
+{{- if .Values.restore.enabled }}
+{{- $secretName := include "agents-database.secretName" . -}}
+{{- $keys := .Values.auth.secretKeys -}}
+{{/*
+The restore job. It is deliberately not part of the release's normal state:
+
+  * it exists only when asked for, so installing, upgrading or restarting the
+    database never restores anything;
+  * it is applied by the restore script rather than by an install, which also
+    avoids the trap that a Job's specification cannot be changed once it has
+    run, and would otherwise make every later upgrade fail;
+  * it is removed when the script is done with it.
+
+Its name is fixed rather than run-specific, because the script deletes it before
+the next run.
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "agents-database.fullname" . }}-restore
+  labels:
+    {{- include "agents-database.labels" . | nindent 4 }}
+    app.kubernetes.io/managed-by: agents-database-restore
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "agents-database.labels" . | nindent 12 }}
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup }}
+        fsGroup: {{ .Values.securityContext.fsGroup }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: restore
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          command:
+            - /scripts/restore.sh
+          env:
+            - name: RESTORE_FILE
+              value: {{ required "restore.file must name the dump to restore" .Values.restore.file | quote }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ index $keys "password" }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "agents-database.fullname" . }}-connection
+            - secretRef:
+                name: {{ $secretName }}
+          resources:
+            {{- toYaml .Values.restore.resources | nindent 12 }}
+          volumeMounts:
+            - name: backups
+              mountPath: /backups
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: backups
+          persistentVolumeClaim:
+            claimName: {{ include "agents-database.fullname" . }}-dumps
+        - name: scripts
+          configMap:
+            name: {{ include "agents-database.fullname" . }}-restore-script
+            defaultMode: 0555
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "agents-database.fullname" . }}-restore-script
+  labels:
+    {{- include "agents-database.labels" . | nindent 4 }}
+data:
+  restore.sh: |-
+{{ .Files.Get "files/restore.sh" | indent 4 }}
+{{- end }}

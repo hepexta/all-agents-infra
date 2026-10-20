@@ -1,0 +1,15 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "agents-database.fullname" . }}
+  labels:
+    {{- include "agents-database.labels" . | nindent 4 }}
+spec:
+  # A single writer cannot lose its only pod to a drain without an outage, so a
+  # voluntary disruption waits instead of proceeding quietly.
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "agents-database.selectorLabels" . | nindent 6 }}
+{{- end }}

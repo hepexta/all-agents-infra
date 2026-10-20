@@ -1,0 +1,149 @@
+# Defaults shared by every environment.
+#
+# Nothing here should need editing to install into the local cluster: the
+# environment files beside this one carry the differences, and the values that
+# must be supplied explicitly are enforced by the templates rather than
+# silently defaulted.
+
+# Fixed so that resource names are predictable: consumers refer to the database
+# by this name, and a release name that changed would move the database.
+fullnameOverride: agents-db
+
+image:
+  repository: postgres
+  tag: "17-alpine"
+  pullPolicy: IfNotPresent
+
+# Credentials are never generated, templated or defaulted by this chart. An
+# existing secret must be supplied, and its keys are named so that a consumer
+# can use the secret directly as environment variables.
+auth:
+  existingSecret: ""
+  secretKeys:
+    username: POSTGRES_USER
+    password: POSTGRES_PASSWORD
+    database: POSTGRES_DB
+
+service:
+  type: ClusterIP
+  port: 5432
+
+persistence:
+  # Empty means the cluster's default class. A managed cluster would name its
+  # own class here instead.
+  storageClassName: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 5Gi
+
+# The database user, which the image creates on first start.
+securityContext:
+  runAsUser: 70
+  runAsGroup: 70
+  fsGroup: 70
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+probes:
+  startup:
+    periodSeconds: 10
+    failureThreshold: 30
+  readiness:
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+  liveness:
+    periodSeconds: 20
+    timeoutSeconds: 5
+    failureThreshold: 6
+
+# A single writer cannot tolerate a voluntary disruption, so the budget keeps
+# one pod available and makes a node drain wait rather than take the database
+# down silently.
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Preferred rather than required, so that a single-replica database can still
+# schedule on a two-worker cluster, while additional replicas spread out.
+antiAffinity:
+  enabled: true
+
+postgresql:
+  maxConnections: 100
+  # Applied only when the data directory is first initialised.
+  initdbArgs: "--data-checksums"
+  extraArgs: []
+
+# Publishes the non-secret half of the connection settings, so a consumer can
+# take the host and port from here and the credential from the secret.
+connection:
+  publish: true
+
+# How the database is reached from outside the cluster.
+#
+# Off by default and driven entirely by values, so a production install that
+# forgets to say otherwise exposes nothing, and no template has to be edited to
+# forbid it. The local overlay turns it on.
+#
+# This publishes a plain TCP service, never an HTTP ingress: PostgreSQL speaks a
+# binary protocol.
+access:
+  gatewayTcp:
+    enabled: false
+    # Which gateway to attach to is a fact about the cluster, not a chart
+    # default, so it is deliberately empty here and supplied by an overlay.
+    parentRef:
+      name: ""
+      namespace: ""
+      sectionName: ""
+
+# Scheduled dumps. The chart's only data-safety mechanism, because there is no
+# operator and therefore no failover or point-in-time recovery.
+backup:
+  enabled: true
+  # Hourly on the hour, the same cadence as the container stack.
+  schedule: "0 * * * *"
+  # Older than this is pruned, except that the newest few are always kept.
+  retentionHours: 48
+  minKeep: 3
+  # A sentinel left by a restore that died must not stop dumps for ever.
+  staleSentinelMinutes: 120
+  persistence:
+    storageClassName: ""
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+# Applies the platform schema to a fresh database. Off by default, because the
+# application initialises itself and a chart that also creates tables is a
+# second writer of schema waiting to race the first. The definition is mounted
+# from a configuration object created out of the one existing file rather than
+# copied into this chart.
+schema:
+  enabled: false
+  configMap: ""
+
+# Restoring a dump is an explicit act, never something an install, an upgrade or
+# a restart does on its own.
+restore:
+  enabled: false
+  file: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi

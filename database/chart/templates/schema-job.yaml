@@ -1,0 +1,84 @@
+{{- if .Values.schema.enabled }}
+{{- $secretName := include "agents-database.secretName" . -}}
+{{- $keys := .Values.auth.secretKeys -}}
+{{/*
+Initialises a fresh database with the platform schema.
+
+The definition is not kept in this chart. It is mounted from a configuration
+object that the initialisation script creates from the one existing definition
+in the parent directory, so the repository does not end up with a second copy
+that can drift from the first.
+
+Off by default, because the application initialises itself, and a chart that
+also creates tables is a second writer of schema waiting to race the first.
+Applied by the script rather than by the release, for the same reason as the
+restore job: a job that has run cannot be changed, and a release-managed one
+would break every later upgrade.
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "agents-database.fullname" . }}-schema
+  labels:
+    {{- include "agents-database.labels" . | nindent 4 }}
+    app.kubernetes.io/managed-by: agents-database-schema
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "agents-database.labels" . | nindent 12 }}
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup }}
+        fsGroup: {{ .Values.securityContext.fsGroup }}
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: schema
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          command:
+            - sh
+            - -c
+            - exec psql -v ON_ERROR_STOP=1 -h "$POSTGRES_HOST" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /schema/schema.sql
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ index $keys "password" }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "agents-database.fullname" . }}-connection
+            - secretRef:
+                name: {{ $secretName }}
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          volumeMounts:
+            - name: schema
+              mountPath: /schema
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: schema
+          configMap:
+            name: {{ required "schema.configMap must name a config map holding the schema definition" .Values.schema.configMap }}
+        - name: tmp
+          emptyDir: {}
+{{- end }}

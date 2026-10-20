@@ -1,0 +1,32 @@
+# A shell inside the cluster that holds the same token the cluster uses, so the
+# token's reach can be checked from where it is actually used rather than from
+# the host.
+#
+# It lives in the namespace holding the token because a secret can only be
+# mounted by a pod in its own namespace. Everything here is removed once the
+# check has been made.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vault-access-check
+  namespace: external-secrets
+  labels:
+    app: vault-access-check
+spec:
+  restartPolicy: Never
+  containers:
+    - name: curl
+      image: curlimages/curl:8.10.1
+      command: ["sleep", "600"]
+      volumeMounts:
+        - name: token
+          mountPath: /token
+          readOnly: true
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+  volumes:
+    - name: token
+      secret:
+        secretName: vault-token

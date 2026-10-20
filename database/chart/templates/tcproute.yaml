@@ -1,0 +1,34 @@
+{{- if .Values.access.gatewayTcp.enabled }}
+{{- $ref := .Values.access.gatewayTcp.parentRef -}}
+{{- $gwName := required "access.gatewayTcp.parentRef.name must name the gateway the database is published through" $ref.name -}}
+{{- $gwNamespace := required "access.gatewayTcp.parentRef.namespace must be set to the gateway's namespace" $ref.namespace -}}
+{{/*
+Attaches the database to the gateway's transport-layer listener, which is what
+publishes it to the host on the port the cluster maps to that listener.
+
+This is not an HTTP ingress and must never become one: PostgreSQL speaks a
+binary protocol, so an ingress that terminates HTTP in front of it is a
+category error rather than a misconfiguration.
+
+Which gateway is a fact about the cluster rather than a chart default, so it
+comes from the environment overlay and the template refuses to render without
+it.
+*/}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: TCPRoute
+metadata:
+  name: {{ include "agents-database.fullname" . }}
+  labels:
+    {{- include "agents-database.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ $gwName }}
+      namespace: {{ $gwNamespace }}
+      {{- if $ref.sectionName }}
+      sectionName: {{ $ref.sectionName }}
+      {{- end }}
+  rules:
+    - backendRefs:
+        - name: {{ include "agents-database.fullname" . }}
+          port: {{ .Values.service.port }}
+{{- end }}

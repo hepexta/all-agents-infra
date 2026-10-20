@@ -1,0 +1,120 @@
+{{- if .Values.backup.enabled }}
+{{- $secretName := include "agents-database.secretName" . -}}
+{{- $keys := .Values.auth.secretKeys -}}
+{{/*
+The dump service: a claim for the dumps themselves, the script that takes one,
+and the schedule that runs it.
+
+The dumps live on a claim of their own rather than inside the data directory, so
+that a dump can be fetched, inspected or copied without going through the
+database, and so that losing the database volume does not lose the backups with
+it.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "agents-database.fullname" . }}-dumps
+  labels:
+    {{- include "agents-database.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.backup.persistence.storageClassName }}
+  storageClassName: {{ .Values.backup.persistence.storageClassName }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ required "backup.persistence.size must be set for this environment" .Values.backup.persistence.size }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "agents-database.fullname" . }}-dump-script
+  labels:
+    {{- include "agents-database.labels" . | nindent 4 }}
+data:
+  dump.sh: |-
+{{ .Files.Get "files/dump.sh" | indent 4 }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "agents-database.fullname" . }}-dump
+  labels:
+    {{- include "agents-database.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  # Never two dumps at once, which is also what keeps a slow dump from being
+  # overtaken by the next scheduled one.
+  concurrencyPolicy: Forbid
+  # A missed schedule is not made up later: on a laptop that has been asleep,
+  # one catch-up dump is wanted, not one per missed hour.
+  startingDeadlineSeconds: 300
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            {{- include "agents-database.labels" . | nindent 12 }}
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: {{ .Values.securityContext.runAsUser }}
+            runAsGroup: {{ .Values.securityContext.runAsGroup }}
+            fsGroup: {{ .Values.securityContext.fsGroup }}
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: dump
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              command:
+                - /scripts/dump.sh
+              env:
+                - name: BACKUP_TTL_HOURS
+                  value: {{ .Values.backup.retentionHours | quote }}
+                - name: BACKUP_MIN_KEEP
+                  value: {{ .Values.backup.minKeep | quote }}
+                - name: STALE_SENTINEL_MINUTES
+                  value: {{ .Values.backup.staleSentinelMinutes | quote }}
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ $secretName }}
+                      key: {{ index $keys "password" }}
+              envFrom:
+                - configMapRef:
+                    name: {{ include "agents-database.fullname" . }}-connection
+                - secretRef:
+                    name: {{ $secretName }}
+              resources:
+                {{- toYaml .Values.backup.resources | nindent 16 }}
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: {{ include "agents-database.fullname" . }}-dumps
+            - name: scripts
+              configMap:
+                name: {{ include "agents-database.fullname" . }}-dump-script
+                defaultMode: 0555
+            - name: tmp
+              emptyDir: {}
+{{- end }}

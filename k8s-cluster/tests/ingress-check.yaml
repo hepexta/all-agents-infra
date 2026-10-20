@@ -1,0 +1,130 @@
+# A single small web workload reachable three different ways, to check which
+# controller actually served a request. Each route uses a hostname that only one
+# controller knows, so a request that succeeds proves which one answered, and
+# the same hostname on another controller's port must not.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingress-check
+  namespace: default
+  labels:
+    app: ingress-check
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ingress-check
+  template:
+    metadata:
+      labels:
+        app: ingress-check
+    spec:
+      containers:
+        - name: echo
+          image: hashicorp/http-echo:1.0
+          args: ["-listen=:5678", "-text=served-by-the-ingress-controller"]
+          ports:
+            - containerPort: 5678
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingress-check
+  namespace: default
+spec:
+  selector:
+    app: ingress-check
+  ports:
+    - name: http
+      port: 80
+      targetPort: 5678
+---
+# Under the managed service's application routing class name.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-check-aks-class
+  namespace: default
+spec:
+  ingressClassName: webapprouting.kubernetes.azure.com
+  rules:
+    - host: aks-class.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ingress-check
+                port:
+                  number: 80
+---
+# Under the familiar local class name, served by a second installation.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-check-nginx-class
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: nginx-class.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ingress-check
+                port:
+                  number: 80
+---
+# Naming no class at all: it must be picked up by whichever class is default.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-check-default-class
+  namespace: default
+spec:
+  rules:
+    - host: default-class.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ingress-check
+                port:
+                  number: 80
+---
+# TLS through the local certificate authority, requested declaratively by the
+# annotation rather than by creating a certificate object by hand.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-check-tls
+  namespace: default
+  annotations:
+    cert-manager.io/cluster-issuer: local-ca
+spec:
+  ingressClassName: webapprouting.kubernetes.azure.com
+  tls:
+    - hosts:
+        - tls-check.local
+      secretName: ingress-check-tls
+  rules:
+    - host: tls-check.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ingress-check
+                port:
+                  number: 80

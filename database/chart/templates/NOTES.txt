@@ -1,0 +1,18 @@
+{{ .Chart.Name }} {{ .Chart.Version }} installed as {{ .Release.Name }} in namespace {{ .Release.Namespace }}.
+
+Connections
+  In cluster:   {{ include "agents-database.fullname" . }}:{{ .Values.service.port }}
+  From outside: kubectl -n {{ .Release.Namespace }} port-forward \
+                  svc/{{ include "agents-database.fullname" . }} <local-port>:{{ .Values.service.port }}
+
+Application wiring
+  envFrom:
+    - configMapRef:
+        name: {{ include "agents-database.fullname" . }}-connection
+    - secretRef:
+        name: {{ include "agents-database.secretName" . }}
+
+Notes
+  One writer, no automatic failover. Data safety comes from the scheduled dump.
+  Restarting the database does not roll anything back: there is no restore on
+  start, and restoring is a deliberate action.

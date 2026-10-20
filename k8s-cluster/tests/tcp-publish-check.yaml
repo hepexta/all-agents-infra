@@ -1,0 +1,75 @@
+# A throwaway PostgreSQL, used only to prove the transport path from Windows
+# into the cluster before the real chart depends on it.
+#
+# It is deliberately not the platform database, and its credential is
+# deliberately obvious rather than secret: the real one is deployed from the
+# chart later, with credentials delivered from the secret store. Everything in
+# this file is removed once the check has been made.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcp-check-db
+  namespace: default
+  labels:
+    app: tcp-check-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tcp-check-db
+  template:
+    metadata:
+      labels:
+        app: tcp-check-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          env:
+            - name: POSTGRES_DB
+              value: tcpcheck
+            - name: POSTGRES_USER
+              value: tcpcheck
+            - name: POSTGRES_PASSWORD
+              value: tcpcheck-only
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "tcpcheck", "-d", "tcpcheck"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tcp-check-db
+  namespace: default
+spec:
+  selector:
+    app: tcp-check-db
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+# Attaches the database to the gateway's transport-layer listener, which is what
+# publishes it to the host. The real chart creates its own route on the same
+# listener, so this one is removed once the path has been proven.
+apiVersion: gateway.networking.k8s.io/v1
+kind: TCPRoute
+metadata:
+  name: tcp-check-db
+  namespace: default
+spec:
+  parentRefs:
+    - name: local
+      sectionName: postgres
+  rules:
+    - backendRefs:
+        - name: tcp-check-db
+          port: 5432

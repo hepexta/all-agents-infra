@@ -1,0 +1,53 @@
+# Production. A skeleton that records the cloud specifics as well, so that
+# nothing local can leak into a production install and nobody has to guess which
+# class names or identity mechanism apply there.
+#
+# Every empty value below fails the install with its own name. That is the
+# point: a missing production value should stop the release, not silently
+# become a laptop default.
+
+auth:
+  # TODO: the secret holding the database credentials for production.
+  #
+  # The intended shape is the same as locally, with two substitutions:
+  #   * the operator is pointed at the cloud secret manager rather than at a
+  #     local store, which changes the store definition and not this chart;
+  #   * a static token disappears entirely, because the operator authenticates
+  #     with workload identity bound to the cluster's own service account.
+  # Neither is implemented here; both are recorded so that the local pattern is
+  # not mistaken for a production one.
+  existingSecret: ""
+
+persistence:
+  # The managed service creates this class by default for new clusters. The
+  # legacy in-tree names are no longer created at all.
+  storageClassName: managed-csi
+  # TODO: the size production needs.
+  size: ""
+
+resources:
+  # TODO: requests and limits sized for production.
+  requests: {}
+  limits: {}
+
+backup:
+  # TODO: how long production retains dumps, and where they should be copied to
+  # off-cluster. The claim below is a local stand-in; object storage managed
+  # outside the cluster is the production answer.
+  persistence:
+    size: ""
+
+# There is no ingress class here on purpose.
+#
+# The managed service's application routing add-on installs one
+# (webapprouting.kubernetes.azure.com), and the cluster definition in this
+# repository mirrors that class name locally for the charts that need it. This
+# chart never uses it: the database speaks a binary protocol over TCP and is
+# never placed behind an HTTP ingress in any environment. Publishing it outside
+# the cluster is a transport-layer listener or a load balancer, not an ingress.
+access:
+  gatewayTcp:
+    enabled: false
+
+postgresql:
+  maxConnections: 500

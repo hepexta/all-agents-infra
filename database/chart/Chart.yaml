@@ -1,0 +1,10 @@
+apiVersion: v2
+name: agents-database
+description: PostgreSQL for the all-agents platform. A single primary with scheduled dumps, credentials delivered from outside the chart, and environment overlays for local, development and production.
+type: application
+version: 0.1.0
+appVersion: "17"
+# A genuine floor, not a record of what has been tested: the chart needs the
+# stable disruption budget API and the seccomp profile field. The version this
+# chart is actually exercised against is recorded in the readme.
+kubeVersion: ">=1.27.0-0"

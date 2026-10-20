@@ -1,0 +1,22 @@
+# The same classic contract under the familiar local class name.
+#
+# This is a second installation of the same chart, not a second class on the
+# first one: a controller handles exactly one Ingress class, so serving both
+# names costs a whole extra release. It publishes on its own host ports, since
+# a node port can only be claimed once per cluster.
+controller:
+  ingressClass:
+    name: nginx
+    create: true
+    setAsDefaultIngress: false
+  service:
+    type: NodePort
+    externalTrafficPolicy: Cluster
+    httpPort:
+      enable: true
+      port: 80
+      nodePort: 30081
+    httpsPort:
+      enable: true
+      port: 443
+      nodePort: 30444

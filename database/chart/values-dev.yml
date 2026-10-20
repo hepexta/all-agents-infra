@@ -1,0 +1,32 @@
+# Development environment. A skeleton: every key below must be filled in before
+# this file can be used, and an install that leaves one empty fails with that
+# key named rather than quietly inheriting a laptop default.
+#
+# Nothing here is specific to the local cluster, and nothing local can leak in:
+# the local overlay carries the cluster's own facts.
+
+auth:
+  # TODO: the secret holding the database credentials for this environment. The
+  # intended shape matches production: derived by the operator from the
+  # environment's secret manager, never written by hand.
+  existingSecret: ""
+
+persistence:
+  # TODO: the storage class this environment provides.
+  storageClassName: ""
+  # TODO: the size this environment needs.
+  size: ""
+
+resources:
+  # TODO: requests and limits sized for this environment.
+  requests: {}
+  limits: {}
+
+# Left off deliberately: a development database is reached from inside the
+# cluster, not from a laptop's published port.
+access:
+  gatewayTcp:
+    enabled: false
+
+postgresql:
+  maxConnections: 100

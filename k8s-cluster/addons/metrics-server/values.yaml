@@ -1,0 +1,9 @@
+# metrics-server values for the local cluster.
+#
+# kind signs the kubelet serving certificates with the cluster's own CA, which
+# metrics-server does not trust, so it cannot scrape the kubelet and reports
+# nothing at all. Relaxing verification is acceptable only because this is a
+# throwaway local cluster on a loopback interface; it must not be copied into a
+# managed cluster, where the certificates are properly signed.
+args:
+  - --kubelet-insecure-tls

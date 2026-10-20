@@ -36,6 +36,23 @@ sh scripts/status.sh             # report state, nodes and server version
 sh scripts/down.sh               # remove the cluster (idempotent)
 ```
 
+### From nothing
+
+On a machine with the requirements below, the whole platform is five commands in this order. Each is safe to repeat, and the last one is the proof:
+
+```bash
+cd k8s-cluster
+sh scripts/up.sh                     # the cluster
+sh scripts/vault-seed.sh             # credentials, and the token the cluster uses
+sh scripts/addons-up.sh              # platform services, including secret delivery
+sh database/chart/install.sh local   # the database
+sh scripts/smoke-test.sh             # one line per check
+```
+
+`vault-seed.sh` comes before `addons-up.sh` on purpose: the addon that delivers secrets refuses to run without the scoped token the seed step mints.
+
+That sequence was run against a removed cluster to check that the documentation is sufficient on its own, and it rebuilt the whole platform in under ten minutes.
+
 Any profile can be named explicitly, and the default is `local`:
 
 ```bash

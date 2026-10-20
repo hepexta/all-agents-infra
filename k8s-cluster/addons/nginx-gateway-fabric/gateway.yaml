@@ -1,0 +1,98 @@
+# The Gateway API entry point for this cluster.
+#
+# Nothing provides load balancer addresses locally, so the data plane service is
+# a node port service with fixed node ports, which are the ones the host port
+# mappings in the profile forward to. The proxy resource also relaxes the
+# traffic policy for the same reason as the classic controller: the mapping
+# lands on the control plane node, and a local policy would only forward to
+# data plane pods running on that same node.
+apiVersion: gateway.nginx.org/v1alpha2
+kind: NginxProxy
+metadata:
+  name: local
+  namespace: default
+spec:
+  kubernetes:
+    service:
+      type: NodePort
+      externalTrafficPolicy: Cluster
+      nodePorts:
+        - listenerPort: 80
+          port: 30082
+        - listenerPort: 443
+          port: 30445
+        - listenerPort: 5432
+          port: 30433
+---
+# The certificate for the HTTPS listener, issued by the same local authority the
+# classic contract uses, so both contracts present the same kind of chain.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: gateway-tls
+  namespace: default
+spec:
+  secretName: gateway-tls
+  dnsNames:
+    - gateway-class.local
+  issuerRef:
+    name: local-ca
+    kind: ClusterIssuer
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: local
+  namespace: default
+spec:
+  gatewayClassName: nginx
+  infrastructure:
+    parametersRef:
+      group: gateway.nginx.org
+      kind: NginxProxy
+      name: local
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+    - name: https
+      protocol: HTTPS
+      port: 443
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: gateway-tls
+      allowedRoutes:
+        namespaces:
+          from: All
+    # The transport-layer listener the database is published through. It exists
+    # here even before anything is attached to it, so that the port the
+    # database chart will use is part of the cluster definition rather than
+    # something the chart has to invent. Allowing routes from every namespace
+    # means the chart can live in its own.
+    - name: postgres
+      protocol: TCP
+      port: 5432
+      allowedRoutes:
+        kinds:
+          - kind: TCPRoute
+        namespaces:
+          from: All
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gateway-check
+  namespace: default
+spec:
+  parentRefs:
+    - name: local
+  hostnames:
+    - gateway-class.local
+  rules:
+    - backendRefs:
+        - name: ingress-check
+          port: 80

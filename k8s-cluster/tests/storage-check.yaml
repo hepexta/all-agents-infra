@@ -1,0 +1,41 @@
+# Verification for the cluster's default storage class.
+#
+# The claim deliberately names no class: it must bind through whatever the
+# cluster treats as default. The writer leaves a marker in the volume and then
+# waits, so the same marker can be looked for after the pod has been replaced.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: storage-check
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: storage-check-writer
+  namespace: default
+  labels:
+    app: storage-check
+spec:
+  restartPolicy: Never
+  containers:
+    - name: writer
+      image: busybox:1.36
+      command: ["sh", "-c", "echo persisted-across-pods > /data/marker && sleep 3600"]
+      volumeMounts:
+        - name: data
+          mountPath: /data
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: storage-check
