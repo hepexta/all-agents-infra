@@ -9,7 +9,7 @@
 set -eu
 . "$(dirname -- "$0")/lib.sh"
 
-VAULT_CONTAINER=${VAULT_CONTAINER:-vault-service}
+VAULT_CONTAINER=${VAULT_CONTAINER:-vault-service-mock}
 VAULT_ADDR=${VAULT_ADDR:-http://127.0.0.1:8200}
 export VAULT_ADDR
 export VAULT_CONTAINER
